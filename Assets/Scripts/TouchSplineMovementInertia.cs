@@ -48,8 +48,8 @@ public class TouchSplineMovementInertia : MonoBehaviour
             normal = Vector3.Cross(tangent, up);
             Debug.Log(normal);
             targetObject.transform.rotation = Quaternion.LookRotation(tangent);
-            //targetObject.transform.Translate(normal);
-            
+            targetObject.transform.Translate(normal.normalized, Space.World);
+
         }
     }
 
@@ -121,7 +121,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
             Vector3 newPosition = SplineUtility.GetPointAtLinearDistance(spline, t, distanceDelta, out newT);
             Vector3 up = Vector3.up;
             //normal = Vector3.Cross(tangent, up);
-            targetObject.transform.Translate(-normal);
+            //targetObject.transform.Translate(-normal.normalized);
             targetObject.transform.position = newPosition;
             // อัพเดทการหมุนให้ Object หันตาม tangent ของ Spline
             Vector3 tangent = spline.EvaluateTangent(newT);
@@ -129,7 +129,9 @@ public class TouchSplineMovementInertia : MonoBehaviour
                 targetObject.transform.rotation = Quaternion.LookRotation(tangent);
             // อัพเดทค่า t สำหรับการเคลื่อนที่ในครั้งถัดไป
             normal = Vector3.Cross(tangent, Vector3.up);
-            targetObject.transform.Translate(normal);
+            Debug.Log("tangent: " + tangent.normalized);
+            Debug.Log("normal: "+normal.normalized);
+            targetObject.transform.Translate(normal.normalized, Space.World);
             t = newT;
         }
     }
