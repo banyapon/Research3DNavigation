@@ -16,7 +16,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
     public float moveSpeed = 0.005f;
 
     [Tooltip("ค่าปัจจุบันบน Spline (0-1)")]
-    private float t = 0f;
+    public float t = 0f;
 
     [Tooltip("Damping factor สำหรับ Inertia (0-1), ค่าน้อยจะลดความเร็วได้ไว")]
     public float inertiaDamping = 0.95f;
@@ -26,6 +26,8 @@ public class TouchSplineMovementInertia : MonoBehaviour
 
     [Tooltip("ความเร็วของ Inertia (หน่วย: ระยะทาง/วินาที)")]
     private float inertiaVelocity = 0f;
+
+    public Vector3 normal;
 
     public Text labelLog;
 
@@ -39,8 +41,15 @@ public class TouchSplineMovementInertia : MonoBehaviour
             Vector3 startPosition = spline.EvaluatePosition(t);
             targetObject.transform.position = startPosition;
             Vector3 tangent = spline.EvaluateTangent(t);
-            if (tangent != Vector3.zero)
-                targetObject.transform.rotation = Quaternion.LookRotation(tangent);
+
+            //Debug.Log("tangent:" + tangent.normalized); //V^ = V/|V|
+            Debug.Log("tangent:" + tangent);
+            Vector3 up = Vector3.up;
+            normal = Vector3.Cross(tangent, up);
+            Debug.Log(normal);
+            targetObject.transform.rotation = Quaternion.LookRotation(tangent);
+            //targetObject.transform.Translate(normal);
+            
         }
     }
 
@@ -80,7 +89,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
             }
             else if (touch.phase == TouchPhase.Ended)
             {
-                UpdateLabelLog();
+                
             }
         }
 
@@ -96,6 +105,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
             else
             {
                 inertiaVelocity = 0f;
+                UpdateLabelLog();
             }
         }
     }
@@ -109,12 +119,17 @@ public class TouchSplineMovementInertia : MonoBehaviour
             float newT;
             // คำนวณตำแหน่งใหม่บน Spline โดยเริ่มจากค่า t ปัจจุบันและเลื่อนตามระยะ distanceDelta
             Vector3 newPosition = SplineUtility.GetPointAtLinearDistance(spline, t, distanceDelta, out newT);
+            Vector3 up = Vector3.up;
+            //normal = Vector3.Cross(tangent, up);
+            targetObject.transform.Translate(-normal);
             targetObject.transform.position = newPosition;
             // อัพเดทการหมุนให้ Object หันตาม tangent ของ Spline
             Vector3 tangent = spline.EvaluateTangent(newT);
             if (tangent != Vector3.zero)
                 targetObject.transform.rotation = Quaternion.LookRotation(tangent);
             // อัพเดทค่า t สำหรับการเคลื่อนที่ในครั้งถัดไป
+            normal = Vector3.Cross(tangent, Vector3.up);
+            targetObject.transform.Translate(normal);
             t = newT;
         }
     }

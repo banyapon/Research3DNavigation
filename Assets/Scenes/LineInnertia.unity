@@ -1403,7 +1403,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1319871700}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: -0.93}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1426,6 +1426,7 @@ MonoBehaviour:
   splineContainer: {fileID: 931042314}
   targetObject: {fileID: 1319871700}
   moveSpeed: 0.005
+  t: 0
   inertiaDamping: 0.95
   inertiaThreshold: 0.001
   labelLog: {fileID: 1007236188}
