@@ -1,0 +1,35 @@
+# Ignore Library and Temp folders
+[Ll]ibrary/
+[Tt]emp/
+[Bb]uild/
+[Bb]uilds/
+[Oo]bj/
+[Uu]serSettings/
+
+# Ignore logs and caches
+Logs/
+MemoryCaptures/
+
+# Ignore large auto-generated Unity files
+*.apk
+*.aab
+*.unitypackage
+
+# Ignore Visual Studio and Rider specific files
+.vs/
+.idea/
+*.suo
+*.csproj
+*.unityproj
+*.sln
+*.user
+*.pidb
+*.booproj
+*.svd
+*.pdb
+
+# Ignore large Unity Cache files
+Library/PackageCache/
+
+# Git LFS for large assets (Optional)
+# If you are tracking large files like textures, videos, or 3D models, use Git LFS.
