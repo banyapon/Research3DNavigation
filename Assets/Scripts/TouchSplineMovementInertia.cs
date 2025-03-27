@@ -6,8 +6,21 @@ using UnityEngine.Splines;
 
 public class TouchSplineMovementInertia : MonoBehaviour
 {
-    [Tooltip("Container ของ Spline")]
-    public SplineContainer splineContainer;
+    public enum Lane { Left, Center, Right } //ผมเพิ่มตัวแปรเงื่อนไขเก็บค่า 3 เลน
+    private Lane currentLane = Lane.Center;  // เริ่มต้นที่เลนกลาง
+
+    [Tooltip("Spline สำหรับเลนกลาง")]
+    //เปลี่ยนตัวแปร
+    public SplineContainer splineCenter;
+
+    [Tooltip("Spline สำหรับเลนซ้าย")]
+    public SplineContainer splineLeft;
+
+    [Tooltip("Spline สำหรับเลนขวา")]
+    public SplineContainer splineRight;
+
+    // ใช้ SplineContainer ปัจจุบัน
+    private SplineContainer currentSpline;
 
     [Tooltip("Object ที่จะเคลื่อนที่ตาม Spline")]
     public GameObject targetObject;
@@ -24,32 +37,31 @@ public class TouchSplineMovementInertia : MonoBehaviour
     [Tooltip("Threshold สำหรับหยุด Inertia")]
     public float inertiaThreshold = 0.001f;
 
-    [Tooltip("ความเร็วของ Inertia (หน่วย: ระยะทาง/วินาที)")]
-    private float inertiaVelocity = 0f;
+    // Inertia สำหรับการเคลื่อนที่ตาม spline (vertical)
+    private float verticalInertia = 0f;
+    // Inertia สำหรับการเคลื่อนที่แนวนอน (lateral)
+    private float horizontalInertia = 0f;
 
-    public Vector3 normal;
+    // ค่า lateralOffset (แกน x) ที่ใช้เป็นการ offset จากจุดตรงกลางของ spline
+    private float lateralOffset = 0f;
 
     public Text labelLog;
+
+    // สำหรับการคำนวณทัชแนวนอนและแนวตั้ง
+    private bool wasHorizontal = false;
+    private Vector2 previousTouchPosition;
+    private float touchStartTime;
+
+    // ค่าคงที่สำหรับเปรียบเทียบแนวตั้ง vs แนวนอน (√3)
+    private float sq3 = Mathf.Sqrt(3f);
 
     void Start()
     {
         labelLog.text = "";
-        if (splineContainer != null && targetObject != null)
+        currentSpline = splineCenter; // เริ่มต้นที่เลนกลาง
+        if (currentSpline != null && targetObject != null)
         {
-            Spline spline = splineContainer.Spline;
-            // กำหนดตำแหน่งเริ่มต้นที่ t = 0
-            Vector3 startPosition = spline.EvaluatePosition(t);
-            targetObject.transform.position = startPosition;
-            Vector3 tangent = spline.EvaluateTangent(t);
-
-            //Debug.Log("tangent:" + tangent.normalized); //V^ = V/|V|
-            Debug.Log("tangent:" + tangent);
-            Vector3 up = Vector3.up;
-            normal = Vector3.Cross(tangent, up);
-            Debug.Log(normal);
-            targetObject.transform.rotation = Quaternion.LookRotation(tangent);
-            targetObject.transform.Translate(normal.normalized, Space.World);
-
+            UpdateTransformPosition();
         }
     }
 
@@ -58,93 +70,176 @@ public class TouchSplineMovementInertia : MonoBehaviour
         bool inputActive = false;
 
 #if UNITY_EDITOR || UNITY_STANDALONE
-        // สำหรับทดสอบใน Editor ด้วย Mouse
         if (Input.GetMouseButton(0))
         {
             inputActive = true;
-            float mouseDelta = Input.GetAxis("Mouse Y");
-            float distanceDelta = -mouseDelta * moveSpeed;
-            MoveAlongSpline(distanceDelta);
-            // คำนวณ inertia velocity จากการเปลี่ยนแปลงล่าสุด
-            inertiaVelocity = distanceDelta / Time.deltaTime;
+            float mouseDeltaY = Input.GetAxis("Mouse Y");
+            float verticalDelta = -mouseDeltaY * moveSpeed;
+            MoveAlongSpline(verticalDelta);
+            verticalInertia = verticalDelta / Time.deltaTime;
+            wasHorizontal = false;
         }
         if (Input.GetMouseButtonUp(0))
         {
-            UpdateLabelLog();
+            touchStartTime = Time.time;
         }
 #endif
 
-        // สำหรับรับค่า touch input บนอุปกรณ์มือถือ
         if (Input.touchCount > 0)
         {
             inputActive = true;
             Touch touch = Input.GetTouch(0);
 
-            if (touch.phase == TouchPhase.Moved)
+            switch (touch.phase)
             {
-                float distanceDelta = -touch.deltaPosition.y * moveSpeed;
-                MoveAlongSpline(distanceDelta);
-                // คำนวณ inertia velocity จาก touch delta
-                inertiaVelocity = distanceDelta / Time.deltaTime;
-            }
-            else if (touch.phase == TouchPhase.Ended)
-            {
-                
+                case TouchPhase.Began:
+                    previousTouchPosition = touch.position;
+                    touchStartTime = Time.time;
+                    verticalInertia = 0f;
+                    horizontalInertia = 0f;
+                    wasHorizontal = false;
+                    break;
+
+                case TouchPhase.Moved:
+                    Vector2 currentTouchPosition = touch.position;
+                    Vector2 delta = currentTouchPosition - previousTouchPosition;
+
+                    if (Mathf.Abs(delta.y) > sq3 * Mathf.Abs(delta.x))
+                    {
+                        float verticalDelta = -delta.y * moveSpeed;
+                        MoveAlongSpline(verticalDelta);
+                        verticalInertia = verticalDelta / Time.deltaTime;
+                        wasHorizontal = false;
+                    }
+                    else
+                    {
+                        float horizontalDelta = delta.x * moveSpeed;
+                        lateralOffset += horizontalDelta;
+                        lateralOffset = Mathf.Clamp(lateralOffset, -1f, 1f);
+                        horizontalInertia = horizontalDelta / Time.deltaTime;
+                        wasHorizontal = true;
+                    }
+                    previousTouchPosition = currentTouchPosition;
+                    break;
+
+                case TouchPhase.Ended:
+                    // ไม่ต้องรีเซ็ต lateralOffset ที่นี่
+                    break;
             }
         }
 
-        // เมื่อไม่มี input ให้ใช้ค่า inertia เพื่อเคลื่อนที่ต่อ
         if (!inputActive)
         {
-            if (Mathf.Abs(inertiaVelocity) > inertiaThreshold)
+            if (Mathf.Abs(verticalInertia) > inertiaThreshold)
             {
-                float inertiaDistanceDelta = inertiaVelocity * Time.deltaTime;
-                MoveAlongSpline(inertiaDistanceDelta);
-                inertiaVelocity *= inertiaDamping;
+                float verticalDelta = verticalInertia * Time.deltaTime;
+                MoveAlongSpline(verticalDelta);
+                verticalInertia *= inertiaDamping;
             }
             else
             {
-                inertiaVelocity = 0f;
-                UpdateLabelLog();
+                verticalInertia = 0f;
+            }
+
+            if (Mathf.Abs(horizontalInertia) > inertiaThreshold)
+            {
+                lateralOffset += horizontalInertia * Time.deltaTime;
+                lateralOffset = Mathf.Clamp(lateralOffset, -1f, 1f);
+                horizontalInertia *= inertiaDamping;
+            }
+            else
+            {
+                horizontalInertia = 0f;
             }
         }
+
+        // ===== Hysteresis Logic =====
+        //การทำงานของ Hysteresis เมื่อค่าอินพุตเข้าสู่เกณฑ์เพื่อเปลี่ยนสถานะ
+        //ระบบจะไม่เปลี่ยนสถานะกลับทันทีหากค่าอินพุตเล็กน้อยแปรปรวนกลับมาในช่วงขอบเขตเกณฑ์เดิม
+        //ต้องการป้องกันการสลับเลนหรือการกระโดดเปลี่ยนสถานะบ่อย ๆ เมื่อค่าอินพุต (เช่น lateralOffset) อยู่ใกล้เกณฑ์ 0.6
+        switch (currentLane)
+        {
+            case Lane.Center:
+                // หลังจากคำนวณ lateralOffset และ inertia เสร็จในแต่ละเฟรม
+                if (lateralOffset <= -0.6f && currentSpline != splineLeft)
+                {
+                    // ถ้า lateralOffset ถึง -0.6 หรือต่ำกว่า ให้สลับไปเลนซ้าย
+                    SwitchToSpline(splineLeft);
+                }
+                else if (lateralOffset >= 0.6f && currentSpline != splineRight)
+                {
+                    // ถ้า lateralOffset ถึง 0.6 หรือมากกว่า ให้สลับไปเลนขวา
+                    SwitchToSpline(splineRight);
+                }
+                break;
+            case Lane.Left:
+                if (lateralOffset > -0.3f)
+                {
+                    currentLane = Lane.Center;
+                    SwitchToSpline(splineCenter);
+                }
+                break;
+            case Lane.Right:
+                if (lateralOffset < 0.3f)
+                {
+                    currentLane = Lane.Center;
+                    SwitchToSpline(splineCenter);
+                }
+                break;
+        }
+
+        UpdateTransformPosition();
+        UpdateLabelLog();
     }
 
-    // ฟังก์ชันเคลื่อนที่ตาม Spline ด้วยระยะที่กำหนด
     void MoveAlongSpline(float distanceDelta)
     {
-        if (splineContainer != null && targetObject != null)
+        if (currentSpline != null && targetObject != null)
         {
-            Spline spline = splineContainer.Spline;
+            Spline spline = currentSpline.Spline;
             float newT;
-            // คำนวณตำแหน่งใหม่บน Spline โดยเริ่มจากค่า t ปัจจุบันและเลื่อนตามระยะ distanceDelta
             Vector3 newPosition = SplineUtility.GetPointAtLinearDistance(spline, t, distanceDelta, out newT);
-            Vector3 up = Vector3.up;
-            //normal = Vector3.Cross(tangent, up);
-            //targetObject.transform.Translate(-normal.normalized);
-            targetObject.transform.position = newPosition;
-            // อัพเดทการหมุนให้ Object หันตาม tangent ของ Spline
-            Vector3 tangent = spline.EvaluateTangent(newT);
-            if (tangent != Vector3.zero)
-                targetObject.transform.rotation = Quaternion.LookRotation(tangent);
-            // อัพเดทค่า t สำหรับการเคลื่อนที่ในครั้งถัดไป
-            normal = Vector3.Cross(tangent, Vector3.up);
-            Debug.Log("tangent: " + tangent.normalized);
-            Debug.Log("normal: "+normal.normalized);
-            targetObject.transform.Translate(normal.normalized, Space.World);
             t = newT;
         }
     }
 
-    // ฟังก์ชันอัปเดต labelLog ให้แสดงตำแหน่ง, การหมุน และตำแหน่งบน Spline
+    void UpdateTransformPosition()
+    {
+        if (currentSpline != null && targetObject != null)
+        {
+            Spline spline = currentSpline.Spline;
+            Vector3 splineCenterPos = spline.EvaluatePosition(t);
+            Vector3 tangent = spline.EvaluateTangent(t);
+            Vector3 right = Vector3.Cross(Vector3.up, tangent).normalized;
+            targetObject.transform.position = splineCenterPos + lateralOffset * right;
+            if (tangent != Vector3.zero)
+            {
+                targetObject.transform.rotation = Quaternion.LookRotation(tangent);
+            }
+        }
+    }
+
+    void SwitchToSpline(SplineContainer newSpline)
+    {
+        if (newSpline == null) return;
+        currentSpline = newSpline;
+        lateralOffset = 0f; // รีเซ็ต lateralOffset ให้กลับเป็นศูนย์ -> อยู่กึ่งกลางเลน
+        UpdateTransformPosition();
+    }
+
+
     void UpdateLabelLog()
     {
         if (targetObject != null && labelLog != null)
         {
             Vector3 pos = targetObject.transform.position;
             Vector3 rot = targetObject.transform.rotation.eulerAngles;
-            labelLog.text = string.Format("Position: ({0:F2}, {1:F2}, {2:F2})\nRotation: ({3:F2}, {4:F2}, {5:F2})\nSpline Pos: {6:F2}",
-                                          pos.x, pos.y, pos.z, rot.x, rot.y, rot.z, t);
+            labelLog.text = string.Format(
+                "Position: ({0:F2}, {1:F2}, {2:F2})\nRotation: ({3:F2}, {4:F2}, {5:F2})\nSpline Pos: {6:F2}\nLateral Offset: {7:F2}",
+                pos.x, pos.y, pos.z,
+                rot.x, rot.y, rot.z,
+                t, lateralOffset
+            );
         }
     }
 }
