@@ -45,7 +45,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
     // ค่า lateralOffset (แกน x) ที่ใช้เป็นการ offset จากจุดตรงกลางของ spline
     private float lateralOffset = 0f;
 
-    public Text labelLog;
+    public Text labelLog, labelSpline;
 
     // สำหรับการคำนวณทัชแนวนอนและแนวตั้ง
     private bool wasHorizontal = false;
@@ -58,6 +58,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
     void Start()
     {
         labelLog.text = "";
+        labelSpline.text = "Lane:"+currentLane.ToString();
         currentSpline = splineCenter; // เริ่มต้นที่เลนกลาง
         if (currentSpline != null && targetObject != null)
         {
@@ -160,19 +161,19 @@ public class TouchSplineMovementInertia : MonoBehaviour
         switch (currentLane)
         {
             case Lane.Center:
+                labelSpline.text = "Lane:" + currentLane;
                 // หลังจากคำนวณ lateralOffset และ inertia เสร็จในแต่ละเฟรม
-                if (lateralOffset <= -0.6f && currentSpline != splineLeft)
+                if (lateralOffset <= -0.6f && currentSpline != splineLeft && IsSplineCloseEnough(currentSpline, splineLeft))
                 {
-                    // ถ้า lateralOffset ถึง -0.6 หรือต่ำกว่า ให้สลับไปเลนซ้าย
                     SwitchToSpline(splineLeft);
                 }
-                else if (lateralOffset >= 0.6f && currentSpline != splineRight)
+                else if (lateralOffset >= 0.6f && currentSpline != splineRight && IsSplineCloseEnough(currentSpline, splineRight))
                 {
-                    // ถ้า lateralOffset ถึง 0.6 หรือมากกว่า ให้สลับไปเลนขวา
                     SwitchToSpline(splineRight);
                 }
                 break;
             case Lane.Left:
+                labelSpline.text = "Lane:" + currentLane;
                 if (lateralOffset > -0.3f)
                 {
                     currentLane = Lane.Center;
@@ -180,6 +181,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
                 }
                 break;
             case Lane.Right:
+                labelSpline.text = "Lane:" + currentLane;
                 if (lateralOffset < 0.3f)
                 {
                     currentLane = Lane.Center;
@@ -188,9 +190,24 @@ public class TouchSplineMovementInertia : MonoBehaviour
                 break;
         }
 
+        Debug.Log("Distance to Left: " + Mathf.Abs(currentSpline.Spline.EvaluatePosition(t).x - splineLeft.Spline.EvaluatePosition(t).x));
+        Debug.Log("Distance to Right: " + Mathf.Abs(currentSpline.Spline.EvaluatePosition(t).x - splineRight.Spline.EvaluatePosition(t).x));
+
         UpdateTransformPosition();
         UpdateLabelLog();
     }
+
+    bool IsSplineCloseEnough(SplineContainer from, SplineContainer to)
+    {
+        if (from == null || to == null) return false;
+
+        Vector3 fromPos = from.Spline.EvaluatePosition(t);
+        Vector3 toPos = to.Spline.EvaluatePosition(t);
+        float horizontalDistance = Mathf.Abs(fromPos.x - toPos.x); // เฉพาะแกน X
+
+        return horizontalDistance <= 0.7f; // ค่า threshold ที่คุณต้องการ
+    }
+
 
     void MoveAlongSpline(float distanceDelta)
     {
