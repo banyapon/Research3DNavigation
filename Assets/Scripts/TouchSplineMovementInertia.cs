@@ -161,7 +161,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
         switch (currentLane)
         {
             case Lane.Center:
-                labelSpline.text = "Lane:" + currentLane;
+                currentLane = Lane.Center;
                 // หลังจากคำนวณ lateralOffset และ inertia เสร็จในแต่ละเฟรม
                 if (lateralOffset <= -0.6f && currentSpline != splineLeft && IsSplineCloseEnough(currentSpline, splineLeft))
                 {
@@ -173,7 +173,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
                 }
                 break;
             case Lane.Left:
-                labelSpline.text = "Lane:" + currentLane;
+                currentLane = Lane.Left;
                 if (lateralOffset > -0.3f)
                 {
                     currentLane = Lane.Center;
@@ -181,7 +181,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
                 }
                 break;
             case Lane.Right:
-                labelSpline.text = "Lane:" + currentLane;
+                currentLane = Lane.Right;
                 if (lateralOffset < 0.3f)
                 {
                     currentLane = Lane.Center;
@@ -192,7 +192,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
 
         Debug.Log("Distance to Left: " + Mathf.Abs(currentSpline.Spline.EvaluatePosition(t).x - splineLeft.Spline.EvaluatePosition(t).x));
         Debug.Log("Distance to Right: " + Mathf.Abs(currentSpline.Spline.EvaluatePosition(t).x - splineRight.Spline.EvaluatePosition(t).x));
-
+        labelSpline.text = "Lane:" + currentLane;
         UpdateTransformPosition();
         UpdateLabelLog();
     }
