@@ -161,31 +161,31 @@ public class TouchSplineMovementInertia : MonoBehaviour
         switch (currentLane)
         {
             case Lane.Center:
-                currentLane = Lane.Center;
                 // หลังจากคำนวณ lateralOffset และ inertia เสร็จในแต่ละเฟรม
                 if (lateralOffset <= -0.6f && currentSpline != splineLeft && IsSplineCloseEnough(currentSpline, splineLeft))
                 {
+                    currentLane = Lane.Left;
                     SwitchToSpline(splineLeft);
                 }
                 else if (lateralOffset >= 0.6f && currentSpline != splineRight && IsSplineCloseEnough(currentSpline, splineRight))
                 {
+                    currentLane = Lane.Right;
                     SwitchToSpline(splineRight);
                 }
+                labelSpline.text = "Lane:" + currentLane;
                 break;
             case Lane.Left:
-                currentLane = Lane.Left;
                 if (lateralOffset > -0.3f)
                 {
-                    currentLane = Lane.Center;
                     SwitchToSpline(splineCenter);
+                    currentLane = Lane.Center;
                 }
                 break;
             case Lane.Right:
-                currentLane = Lane.Right;
                 if (lateralOffset < 0.3f)
                 {
-                    currentLane = Lane.Center;
                     SwitchToSpline(splineCenter);
+                    currentLane = Lane.Center;
                 }
                 break;
         }
