@@ -192,6 +192,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
 
         Debug.Log("Distance to Left: " + Mathf.Abs(currentSpline.Spline.EvaluatePosition(t).x - splineLeft.Spline.EvaluatePosition(t).x));
         Debug.Log("Distance to Right: " + Mathf.Abs(currentSpline.Spline.EvaluatePosition(t).x - splineRight.Spline.EvaluatePosition(t).x));
+        
         labelSpline.text = "Lane:" + currentLane;
         UpdateTransformPosition();
         UpdateLabelLog();
