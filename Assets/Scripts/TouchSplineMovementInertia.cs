@@ -58,7 +58,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
     void Start()
     {
         labelLog.text = "";
-        labelSpline.text = "Lane:"+currentLane.ToString();
+        labelSpline.text = "Lane:" + currentLane.ToString();
         currentSpline = splineCenter; // เริ่มต้นที่เลนกลาง
         if (currentSpline != null && targetObject != null)
         {
@@ -192,7 +192,7 @@ public class TouchSplineMovementInertia : MonoBehaviour
 
         Debug.Log("Distance to Left: " + Mathf.Abs(currentSpline.Spline.EvaluatePosition(t).x - splineLeft.Spline.EvaluatePosition(t).x));
         Debug.Log("Distance to Right: " + Mathf.Abs(currentSpline.Spline.EvaluatePosition(t).x - splineRight.Spline.EvaluatePosition(t).x));
-        
+
         labelSpline.text = "Lane:" + currentLane;
         UpdateTransformPosition();
         UpdateLabelLog();

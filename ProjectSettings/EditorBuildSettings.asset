@@ -14,4 +14,10 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/LineInnertia.unity
     guid: c17ced3a61283774ab6ff1e2d6ada9c4
+  - enabled: 1
+    path: Assets/Scenes/LineGenerator.unity
+    guid: a809a571046f6ce4c9069c16562fec20
+  - enabled: 1
+    path: Assets/Scenes/LineSelect.unity
+    guid: 8cc58defd3aa1c044879ce6c38167514
   m_configObjects: {}
