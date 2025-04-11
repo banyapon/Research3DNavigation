@@ -6,6 +6,7 @@ using UnityEngine.Splines;
 
 public class TouchSplineMovement : MonoBehaviour
 {
+    
     [Tooltip("Container ของ Spline")]
     public SplineContainer splineContainer;
 
@@ -84,6 +85,7 @@ public class TouchSplineMovement : MonoBehaviour
             float newT;
             // คำนวณตำแหน่งใหม่บน Spline โดยเริ่มจากค่า t ปัจจุบันและเลื่อนตามระยะ distanceDelta
             Vector3 newPosition = SplineUtility.GetPointAtLinearDistance(spline, t, distanceDelta, out newT);
+            Debug.Log("newT:" + newT);
             targetObject.transform.position = newPosition;
             // อัพเดทการหมุนให้ Object หันตาม tangent ของ Spline
             Vector3 tangent = spline.EvaluateTangent(newT);

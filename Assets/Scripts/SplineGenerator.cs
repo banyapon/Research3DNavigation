@@ -1,12 +1,18 @@
 ﻿using UnityEngine;
 using UnityEngine.Splines;
+using System.Collections.Generic;
+
+[System.Serializable]
+public class LinkedSpline
+{
+    public SplineContainer spline;
+}
 
 public class SplineGenerator : MonoBehaviour
 {
-    [Tooltip("Spline เส้นที่ 1 (Spline A)")]
-    public SplineContainer spline1;
-    [Tooltip("Spline เส้นที่ 2 (Spline B)")]
-    public SplineContainer spline2;
+    [Tooltip("รายการ SplineContainer ที่จะเชื่อมต่อกันแบบต่อเนื่อง")]
+    public List<SplineContainer> splineChain;
+
     [Tooltip("Object ที่จะเคลื่อนที่ตาม Spline")]
     public GameObject targetObject;
     [Tooltip("ความเร็วการเลื่อน t")]
@@ -14,15 +20,13 @@ public class SplineGenerator : MonoBehaviour
     [Tooltip("TextMesh Legacy สำหรับแสดงผล Spline และค่า t")]
     public TextMesh debugText;
 
-    // Parameter t ของ spline (0-1)
+    public float totalDistance;
     private float t = 0f;
-    // Spline ปัจจุบัน
-    private SplineContainer currentSpline;
+    private int currentSplineIndex = 0;
 
-    // ตัวแปรสำหรับจัดการ touch input และ inertia
     private float verticalInertia = 0f;
     private float horizontalInertia = 0f;
-    private float lateralOffset = 0f; // สำหรับ offset แนวนอน (แกน X)
+    private float lateralOffset = 0f;
     private bool wasHorizontal = false;
     private Vector2 previousTouchPosition;
     private float touchStartTime;
@@ -33,13 +37,14 @@ public class SplineGenerator : MonoBehaviour
 
     void Start()
     {
-        // เริ่มต้นที่ spline เส้นที่ 1 (Spline A)
-        currentSpline = spline1;
-        if (currentSpline != null && targetObject != null)
+        if (splineChain.Count > 0 && targetObject != null)
         {
             UpdateTransformPosition();
             UpdateDebugText();
         }
+
+        float chainLength = GetTotalSplineChainLength();
+        Debug.Log($"ระยะ spline chain รวมทั้งหมด = {chainLength} เมตร");
     }
 
     void Update()
@@ -47,7 +52,6 @@ public class SplineGenerator : MonoBehaviour
         inputActive = false;
 
 #if UNITY_EDITOR || UNITY_STANDALONE
-        // รับค่า input ผ่านเมาส์ (สำหรับทดสอบใน Editor)
         if (Input.GetMouseButton(0))
         {
             inputActive = true;
@@ -63,7 +67,6 @@ public class SplineGenerator : MonoBehaviour
         }
 #endif
 
-        // รับค่า input จาก touch
         if (Input.touchCount > 0)
         {
             inputActive = true;
@@ -83,7 +86,6 @@ public class SplineGenerator : MonoBehaviour
                     Vector2 currentTouchPosition = touch.position;
                     Vector2 delta = currentTouchPosition - previousTouchPosition;
 
-                    // ตรวจสอบทิศทางการเลื่อน: ถ้าแนวตั้งมากกว่าแนวนอน (มีสัดส่วนมากกว่า √3)
                     if (Mathf.Abs(delta.y) > sq3 * Mathf.Abs(delta.x))
                     {
                         float verticalDelta = -delta.y * moveSpeed;
@@ -93,7 +95,6 @@ public class SplineGenerator : MonoBehaviour
                     }
                     else
                     {
-                        // เคลื่อนที่แนวนอน (สำหรับ lateral offset)
                         float horizontalDelta = delta.x * moveSpeed;
                         lateralOffset += horizontalDelta;
                         lateralOffset = Mathf.Clamp(lateralOffset, -1f, 1f);
@@ -102,14 +103,9 @@ public class SplineGenerator : MonoBehaviour
                     }
                     previousTouchPosition = currentTouchPosition;
                     break;
-
-                case TouchPhase.Ended:
-                    // เมื่อ touch จบ ไม่ต้องรีเซ็ต lateralOffset ที่นี่
-                    break;
             }
         }
 
-        // เมื่อไม่มีการ input ให้ใช้ Inertia เพื่อเคลื่อนที่ต่อ
         if (!inputActive)
         {
             if (Mathf.Abs(verticalInertia) > inertiaThreshold)
@@ -141,68 +137,101 @@ public class SplineGenerator : MonoBehaviour
 
     void MoveAlongSpline(float distanceDelta)
     {
-        if (currentSpline != null && targetObject != null)
-        {
-            Spline spline = currentSpline.Spline;
-            float newT;
-            // คำนวณตำแหน่งใหม่และค่า parameter ใหม่ตามระยะทางที่เลื่อนไป
-            Vector3 newPosition = SplineUtility.GetPointAtLinearDistance(spline, t, distanceDelta, out newT);
+        if (splineChain.Count == 0 || targetObject == null) return;
 
-            // กรณีเลื่อนไปข้างหน้า (จาก Spline A ไป B) เมื่อ t ≥ 1
-            if (newT >= 1f && currentSpline == spline1)
-            {
-                float overflow = newT - 1f;
-                currentSpline = spline2;
-                t = 0f;
-                if (overflow > 0f)
-                {
-                    MoveAlongSpline(overflow);
-                }
-            }
-            // กรณีเลื่อนถอยหลัง (จาก Spline B ไป A) เมื่อ t ≤ 0
-            else if (newT <= 0f && currentSpline == spline2)
-            {
-                float overflow = 0f - newT;
-                currentSpline = spline1;
-                t = 1f;
-                if (overflow > 0f)
-                {
-                    // เรียก MoveAlongSpline ด้วยค่า overflow ในทิศทางถอยหลัง (negative)
-                    MoveAlongSpline(-overflow);
-                }
-            }
-            else
-            {
-                t = newT;
-            }
+        Spline currentSpline = splineChain[currentSplineIndex].Spline;
+        float newT;
+        Vector3 newPosition = SplineUtility.GetPointAtLinearDistance(currentSpline, t, distanceDelta, out newT);
+
+        if (newT >= 1f && currentSplineIndex < splineChain.Count - 1)
+        {
+            float overflow = newT - 1f;
+            currentSplineIndex++;
+            t = 0f;
+            if (overflow > 0f) MoveAlongSpline(overflow);
         }
+        else if (newT <= 0f && currentSplineIndex > 0)
+        {
+            float overflow = -newT;
+            currentSplineIndex--;
+            t = 1f;
+            if (overflow > 0f) MoveAlongSpline(-overflow);
+        }
+        else
+        {
+            t = newT;
+        }
+    }
+
+    float EstimateLength(Spline spline, float fromT, float toT, int steps = 2)
+    {
+        totalDistance = 0f;
+        Vector3 prev = spline.EvaluatePosition(fromT);
+        for (int i = 1; i <= steps; i++)
+        {
+            float t = Mathf.Lerp(fromT, toT, i / (float)steps);
+            Vector3 current = spline.EvaluatePosition(t);
+            totalDistance += Vector3.Distance(prev, current);
+            prev = current;
+        }
+        return totalDistance;
     }
 
     void UpdateTransformPosition()
     {
-        if (currentSpline != null && targetObject != null)
+        if (splineChain.Count == 0 || targetObject == null) return;
+
+        Spline currentSpline = splineChain[currentSplineIndex].Spline;
+        Vector3 splinePos = currentSpline.EvaluatePosition(t);
+        Vector3 tangent = currentSpline.EvaluateTangent(t);
+        Vector3 right = Vector3.Cross(Vector3.up, tangent).normalized;
+        targetObject.transform.position = splinePos + lateralOffset * right;
+        if (tangent != Vector3.zero)
         {
-            Spline spline = currentSpline.Spline;
-            Vector3 splinePos = spline.EvaluatePosition(t);
-            // คำนวณ tangent และ right vector สำหรับ lateral offset
-            Vector3 tangent = spline.EvaluateTangent(t);
-            Vector3 right = Vector3.Cross(Vector3.up, tangent).normalized;
-            // ปรับตำแหน่ง targetObject โดยรวม lateral offset ด้วย
-            targetObject.transform.position = splinePos + lateralOffset * right;
-            if (tangent != Vector3.zero)
-            {
-                targetObject.transform.rotation = Quaternion.LookRotation(tangent);
-            }
+            targetObject.transform.rotation = Quaternion.LookRotation(tangent);
         }
     }
 
     void UpdateDebugText()
     {
-        if (debugText != null)
+        if (debugText != null && splineChain.Count > 0)
         {
-            // แสดงผล Spline A หรือ B ตาม currentSpline
-            string splineLabel = (currentSpline == spline1) ? "A" : "B";
-            debugText.text = splineLabel + ":" + t.ToString("F2");
+            float lengthUpToNow = GetLengthUntil(currentSplineIndex, t);
+            debugText.text = $"Spline {currentSplineIndex}: t = {t:F2} | Distance = {lengthUpToNow:F2} m";
         }
+    }
+
+    float GetLengthUntil(int splineIndex, float currentT)
+    {
+        float length = 0f;
+
+        for (int i = 0; i < splineIndex; i++)
+        {
+            length += SplineUtility.CalculateLength(splineChain[i].Spline, 50);
+        }
+
+        float t = Mathf.Clamp01(currentT);
+        if (t >= 1f)
+        {
+            // ถ้า t ไปสุด ให้ใช้ความยาวเต็ม spline นี้
+            length += SplineUtility.CalculateLength(splineChain[splineIndex].Spline, 50);
+        }
+        else if (t > 0f)
+        {
+            length += EstimateLength(splineChain[splineIndex].Spline, 0f, t);
+        }
+
+        return length;
+    }
+
+    float GetTotalSplineChainLength()
+    {
+        float totalLength = 0f;
+        foreach (var splineContainer in splineChain)
+        {
+            if (splineContainer != null)
+                totalLength += SplineUtility.CalculateLength(splineContainer.Spline, 50);
+        }
+        return totalLength;
     }
 }
