@@ -1,148 +1,66 @@
 ﻿using UnityEngine;
 using UnityEngine.Splines;
-using System.Collections.Generic;
+using UnityEditor;
 
+[ExecuteInEditMode]
 public class SplineProcess : MonoBehaviour
 {
-    [Tooltip("รายการ SplineContainer ที่จะเชื่อมต่อกันแบบต่อเนื่อง")]
-    public List<SplineContainer> splineChain;
+    [Header("Spline Chain Settings")]
+    [Tooltip("จำนวนเส้น Spline ที่จะสร้าง")] public int numSplines = 4;
+    [Tooltip("ระยะห่างระหว่างจุดต้น-ปลายของแต่ละ Spline")] public float segmentLength = 5f;
+    [Tooltip("ความกว้างซ้ายขวาของจุดปลายสลับ")] public float lateralOffset = 2f;
+    [Tooltip("สร้างใหม่ทุกครั้งเมื่อค่าถูกเปลี่ยน")] public bool regenerate = false;
 
-    [Tooltip("Object ที่จะเคลื่อนที่ตาม Spline")]
-    public GameObject targetObject;
-    [Tooltip("TextMesh Legacy สำหรับแสดงผล Spline และค่า t")]
-    public TextMesh debugText;
-    [Tooltip("ความเร็วจาก Touch drag (เมตร/พิกเซล)")]
-    public float moveScale = 0.01f;
-
-    private List<float> splineLengths = new();
-    private List<Spline> allSplines = new();
-    private float totalLength;
-    private float walkedDistance = 0f;
-    private float normalizedT = 0f;
-
-    private Vector2 previousTouchPosition;
-    private float verticalInertia = 0f;
-    private float inertiaDamping = 0.95f;
-    private float inertiaThreshold = 0.001f;
-    private bool inputActive = false;
-    private float sq3 = Mathf.Sqrt(3f);
-
-    void Start()
+    private void Update()
     {
-        CalculateSplineLengths();
-    }
-
-    void Update()
-    {
-        inputActive = false;
-
-#if UNITY_EDITOR || UNITY_STANDALONE
-        if (Input.GetMouseButtonDown(0))
-            previousTouchPosition = Input.mousePosition;
-
-        if (Input.GetMouseButton(0))
+        if (!Application.isPlaying && regenerate)
         {
-            Vector2 current = Input.mousePosition;
-            float deltaY = current.y - previousTouchPosition.y;
-            float deltaDist = -deltaY * moveScale;
-            walkedDistance += deltaDist;
-            previousTouchPosition = current;
-            verticalInertia = deltaDist / Time.deltaTime;
-            inputActive = true;
-        }
-#endif
-
-        if (Input.touchCount > 0)
-        {
-            Touch touch = Input.GetTouch(0);
-
-            if (touch.phase == TouchPhase.Began)
-            {
-                previousTouchPosition = touch.position;
-            }
-            else if (touch.phase == TouchPhase.Moved)
-            {
-                Vector2 delta = touch.position - previousTouchPosition;
-                float deltaY = delta.y;
-                float deltaDist = -deltaY * moveScale;
-                walkedDistance += deltaDist;
-                previousTouchPosition = touch.position;
-                verticalInertia = deltaDist / Time.deltaTime;
-                inputActive = true;
-            }
-        }
-
-        if (!inputActive)
-        {
-            if (Mathf.Abs(verticalInertia) > inertiaThreshold)
-            {
-                walkedDistance += verticalInertia * Time.deltaTime;
-                verticalInertia *= inertiaDamping;
-            }
-            else
-            {
-                verticalInertia = 0f;
-            }
-        }
-
-        walkedDistance = Mathf.Clamp(walkedDistance, 0f, totalLength);
-        normalizedT = walkedDistance / totalLength;
-
-        Vector3 pos = GetPositionAtDistance(walkedDistance);
-        targetObject.transform.position = pos;
-
-        if (debugText)
-        {
-            debugText.text = $"Distance: {walkedDistance:F2} m | t: {normalizedT:F3}";
+            regenerate = false;
+            GenerateSplines();
         }
     }
 
-    void CalculateSplineLengths()
+    void GenerateSplines()
     {
-        splineLengths.Clear();
-        allSplines.Clear();
-        totalLength = 0f;
-
-        foreach (var container in splineChain)
+        for (int i = transform.childCount - 1; i >= 0; i--)
         {
-            if (container == null) continue;
-
-            foreach (var spline in container.Splines)
-            {
-                float len = SplineUtility.CalculateLength(spline, 50);
-                splineLengths.Add(len);
-                allSplines.Add(spline);
-                totalLength += len;
-            }
-        }
-    }
-
-    Vector3 GetPositionAtDistance(float distance)
-    {
-        float accumulated = 0f;
-
-        for (int i = 0; i < allSplines.Count; i++)
-        {
-            float len = splineLengths[i];
-            if (distance <= accumulated + len)
-            {
-                float localDistance = distance - accumulated;
-                return SplineUtility.GetPointAtLinearDistance(allSplines[i], 0f, localDistance, out _);
-            }
-            accumulated += len;
+            DestroyImmediate(transform.GetChild(i).gameObject);
         }
 
-        return allSplines[^1].EvaluatePosition(1f);
-    }
+        Vector3 startPoint = transform.position;
+        Vector3 direction = Vector3.forward * segmentLength;
 
-    public void SetNormalizedDistance(float value)
-    {
-        normalizedT = Mathf.Clamp01(value);
-        walkedDistance = normalizedT * totalLength;
-    }
+        for (int i = 0; i < numSplines; i++)
+        {
+            float lateral = (i % 2 == 0 ? -1 : 1) * lateralOffset;
 
-    public float GetNormalizedT()
-    {
-        return normalizedT;
+            Vector3 p0 = startPoint;
+            Vector3 p1 = startPoint + direction + Vector3.right * lateral;
+
+            GameObject go = new GameObject($"Spline_{i}", typeof(SplineContainer), typeof(SplineExtrude));
+            go.transform.parent = transform;
+            go.tag = "spline";
+
+            var container = go.GetComponent<SplineContainer>();
+            Spline spline = new Spline();
+            spline.Add(new BezierKnot(p0));
+            spline.Add(new BezierKnot(p1));
+            container.Spline = spline;
+
+            startPoint = p1;
+        }
+
+        GameObject goFinal = new GameObject($"Spline_{numSplines}_Loop", typeof(SplineContainer), typeof(SplineExtrude));
+        goFinal.transform.parent = transform;
+        goFinal.tag = "spline";
+
+        Vector3 lastPoint = startPoint;
+        Vector3 backToStart = transform.position;
+        Spline loopSpline = new Spline();
+        loopSpline.Add(new BezierKnot(lastPoint));
+        loopSpline.Add(new BezierKnot(backToStart));
+        goFinal.GetComponent<SplineContainer>().Spline = loopSpline;
+
+        Debug.Log($"Generated {numSplines + 1} spline segments including loop.");
     }
 }
