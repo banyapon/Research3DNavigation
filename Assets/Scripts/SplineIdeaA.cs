@@ -3,250 +3,129 @@ using UnityEngine.Splines;
 using System.Collections.Generic;
 
 [System.Serializable]
-
 public class SplineIdeaA : MonoBehaviour
 {
-    [Tooltip("รายการ SplineContainer ที่จะเชื่อมต่อกันแบบต่อเนื่อง")]
-    public List<SplineContainer> splineChain;
+    [Tooltip("รายการ Spline ที่มีโครงสร้างเชื่อมโยง (ถนน)")]
+    public List<mYSplineContainer> roadList;
 
     [Tooltip("Object ที่จะเคลื่อนที่ตาม Spline")]
     public GameObject targetObject;
-    [Tooltip("ความเร็วการเลื่อน t")]
-    public float moveSpeed = 0.005f;
-    [Tooltip("TextMesh Legacy สำหรับแสดงผล Spline และค่า t")]
+
+    [Tooltip("TextMesh สำหรับ debug")]
     public TextMesh debugText;
 
-    public float totalDistance;
-    private float t = 0f;
-    private int currentSplineIndex = 0;
+    public float moveSpeed = 0.005f;
 
-    private float verticalInertia = 0f;
-    private float horizontalInertia = 0f;
+    private float t = 0.5f; // เริ่มกลางเส้น
+    private int currentRoadId = 0;
     private float lateralOffset = 0f;
-    private bool wasHorizontal = false;
-    private Vector2 previousTouchPosition;
-    private float touchStartTime;
-    private float inertiaDamping = 0.95f;
-    private float inertiaThreshold = 0.001f;
-    private float sq3 = Mathf.Sqrt(3f);
-    private bool inputActive = false;
 
     void Start()
     {
-        if (splineChain.Count > 0 && targetObject != null)
+        if (roadList.Count > 0 && targetObject != null)
         {
+            t = 0.5f;
+            currentRoadId = 0;
+            lateralOffset = 0f;
+
             UpdateTransformPosition();
             UpdateDebugText();
         }
-
-        float chainLength = GetTotalSplineChainLength();
-        Debug.Log($"ระยะ spline chain รวมทั้งหมด = {chainLength} เมตร");
     }
 
     void Update()
     {
-        inputActive = false;
+        float delta = Input.GetAxis("Vertical") * moveSpeed;
 
-#if UNITY_EDITOR || UNITY_STANDALONE
-        if (Input.GetMouseButton(0))
+        if (Mathf.Abs(delta) > 0.0001f)
         {
-            inputActive = true;
-            float mouseDeltaY = Input.GetAxis("Mouse Y");
-            float verticalDelta = -mouseDeltaY * moveSpeed;
-            MoveAlongSpline(verticalDelta);
-            verticalInertia = verticalDelta / Time.deltaTime;
-            wasHorizontal = false;
-        }
-        if (Input.GetMouseButtonUp(0))
-        {
-            touchStartTime = Time.time;
-        }
-#endif
-
-        if (Input.touchCount > 0)
-        {
-            inputActive = true;
-            Touch touch = Input.GetTouch(0);
-
-            switch (touch.phase)
-            {
-                case TouchPhase.Began:
-                    previousTouchPosition = touch.position;
-                    touchStartTime = Time.time;
-                    verticalInertia = 0f;
-                    horizontalInertia = 0f;
-                    wasHorizontal = false;
-                    break;
-
-                case TouchPhase.Moved:
-                    Vector2 currentTouchPosition = touch.position;
-                    Vector2 delta = currentTouchPosition - previousTouchPosition;
-
-                    if (Mathf.Abs(delta.y) > sq3 * Mathf.Abs(delta.x))
-                    {
-                        float verticalDelta = -delta.y * moveSpeed;
-                        MoveAlongSpline(verticalDelta);
-                        verticalInertia = verticalDelta / Time.deltaTime;
-                        wasHorizontal = false;
-                    }
-                    else
-                    {
-                        float horizontalDelta = delta.x * moveSpeed;
-                        lateralOffset += horizontalDelta;
-                        lateralOffset = Mathf.Clamp(lateralOffset, -1f, 1f);
-                        horizontalInertia = horizontalDelta / Time.deltaTime;
-                        wasHorizontal = true;
-                    }
-                    previousTouchPosition = currentTouchPosition;
-                    break;
-            }
+            MoveAlongSpline(delta);
         }
 
-        if (!inputActive)
-        {
-            if (Mathf.Abs(verticalInertia) > inertiaThreshold)
-            {
-                float verticalDelta = verticalInertia * Time.deltaTime;
-                MoveAlongSpline(verticalDelta);
-                verticalInertia *= inertiaDamping;
-            }
-            else
-            {
-                verticalInertia = 0f;
-            }
-
-            if (Mathf.Abs(horizontalInertia) > inertiaThreshold)
-            {
-                lateralOffset += horizontalInertia * Time.deltaTime;
-                lateralOffset = Mathf.Clamp(lateralOffset, -1f, 1f);
-                horizontalInertia *= inertiaDamping;
-            }
-            else
-            {
-                horizontalInertia = 0f;
-            }
-        }
-
-        CheckLaneChangeByOffset();
         UpdateTransformPosition();
         UpdateDebugText();
     }
 
-    void MoveAlongSpline(float distanceDelta)
+    void MoveAlongSpline(float delta)
     {
-        if (splineChain.Count == 0 || targetObject == null) return;
+        if (roadList.Count == 0) return;
 
-        Spline currentSpline = splineChain[currentSplineIndex].Spline;
+        Spline spline = roadList[currentRoadId].Spline;
         float newT;
-        Vector3 newPosition = SplineUtility.GetPointAtLinearDistance(currentSpline, t, distanceDelta, out newT);
-
+        SplineUtility.GetPointAtLinearDistance(spline, t, delta, out newT);
         t = newT;
 
-        // ขยับไป spline ถัดไปถ้าสุดทาง
-        if (t >= 1f && currentSplineIndex < splineChain.Count - 1)
+        // เปลี่ยน spline หาก t เกิน
+        if (t >= 1f)
         {
-            Debug.Log("[Branch] Forward to next spline");
-            currentSplineIndex++;
-            t = 0.01f;
+            TryFollowChildEnd(currentRoadId);
         }
-        else if (t <= 0f && currentSplineIndex > 0)
+        else if (t <= 0f)
         {
-            Debug.Log("[Branch] Backward to previous spline");
-            currentSplineIndex--;
+            TryFollowChildStart(currentRoadId);
+        }
+    }
+
+    void TryFollowChildEnd(int roadId)
+    {
+        var road = roadList[roadId];
+        if (road.childNodeE != null && road.childNodeE.Count > 0)
+        {
+            float encoded = road.childNodeE[0];
+            int nextRoadId = Mathf.FloorToInt(encoded);
+            int nodeIndex = Mathf.RoundToInt((encoded - Mathf.Floor(encoded)) * 10);
+
+            Debug.Log($"[SwitchRoad] ต่อจากปลายทาง {roadId} → {nextRoadId} ที่ node {nodeIndex}");
+
+            currentRoadId = nextRoadId;
+            t = 0.01f; // เริ่มต้นนิดหน่อยใน spline ถัดไป
+        }
+        else
+        {
+            t = 1f; // ค้างไว้ที่ปลายเส้น
+        }
+    }
+
+    void TryFollowChildStart(int roadId)
+    {
+        var road = roadList[roadId];
+        if (road.childNodeS != null && road.childNodeS.Count > 0)
+        {
+            float encoded = road.childNodeS[0];
+            int nextRoadId = Mathf.FloorToInt(encoded);
+            int nodeIndex = Mathf.RoundToInt((encoded - Mathf.Floor(encoded)) * 10);
+
+            Debug.Log($"[SwitchRoad] ต่อจากจุดเริ่ม {roadId} → {nextRoadId} ที่ node {nodeIndex}");
+
+            currentRoadId = nextRoadId;
             t = 0.99f;
         }
-    }
-
-    void CheckLaneChangeByOffset()
-    {
-        float x = lateralOffset;
-        Debug.Log($"[CheckLaneChange] index={currentSplineIndex}, t={t:F2}, offset={x:F2}");
-
-        int leftIndex = currentSplineIndex - 1;
-        int rightIndex = currentSplineIndex + 1;
-
-        if (x <= -0.99f && leftIndex >= 0 && leftIndex < splineChain.Count)
+        else
         {
-            Debug.Log("[LaneChange] Jump left lane");
-            currentSplineIndex = leftIndex;
-            lateralOffset = 1f;
+            t = 0f;
         }
-        else if (x >= 0.99f && rightIndex >= 0 && rightIndex < splineChain.Count)
-        {
-            Debug.Log("[LaneChange] Jump right lane");
-            currentSplineIndex = rightIndex;
-            lateralOffset = -1f;
-        }
-    }
-
-    float EstimateLength(Spline spline, float fromT, float toT, int steps = 2)
-    {
-        totalDistance = 0f;
-        Vector3 prev = spline.EvaluatePosition(fromT);
-        for (int i = 1; i <= steps; i++)
-        {
-            float t = Mathf.Lerp(fromT, toT, i / (float)steps);
-            Vector3 current = spline.EvaluatePosition(t);
-            totalDistance += Vector3.Distance(prev, current);
-            prev = current;
-        }
-        return totalDistance;
     }
 
     void UpdateTransformPosition()
     {
-        if (splineChain.Count == 0 || targetObject == null) return;
+        if (roadList.Count == 0 || targetObject == null) return;
 
-        Spline currentSpline = splineChain[currentSplineIndex].Spline;
-        Vector3 splinePos = currentSpline.EvaluatePosition(t);
-        Vector3 tangent = currentSpline.EvaluateTangent(t);
+        var spline = roadList[currentRoadId].Spline;
+        Vector3 pos = spline.EvaluatePosition(t);
+        Vector3 tangent = spline.EvaluateTangent(t);
         Vector3 right = Vector3.Cross(Vector3.up, tangent).normalized;
-        targetObject.transform.position = splinePos + lateralOffset * right;
+
+        targetObject.transform.position = pos + lateralOffset * right;
+
         if (tangent != Vector3.zero)
-        {
             targetObject.transform.rotation = Quaternion.LookRotation(tangent);
-        }
     }
 
     void UpdateDebugText()
     {
-        if (debugText != null && splineChain.Count > 0)
+        if (debugText != null)
         {
-            float lengthUpToNow = GetLengthUntil(currentSplineIndex, t);
-            debugText.text = $"Spline {currentSplineIndex}: t = {t:F2} | Distance = {lengthUpToNow:F2} m";
+            debugText.text = $"Road {currentRoadId} | t = {t:F2}";
         }
-    }
-
-    float GetLengthUntil(int splineIndex, float currentT)
-    {
-        float length = 0f;
-
-        for (int i = 0; i < splineIndex; i++)
-        {
-            length += SplineUtility.CalculateLength(splineChain[i].Spline, 50);
-        }
-
-        float t = Mathf.Clamp01(currentT);
-        if (t >= 1f)
-        {
-            length += SplineUtility.CalculateLength(splineChain[splineIndex].Spline, 50);
-        }
-        else if (t > 0f)
-        {
-            length += EstimateLength(splineChain[splineIndex].Spline, 0f, t);
-        }
-
-        return length;
-    }
-
-    float GetTotalSplineChainLength()
-    {
-        float totalLength = 0f;
-        foreach (var splineContainer in splineChain)
-        {
-            if (splineContainer != null)
-                totalLength += SplineUtility.CalculateLength(splineContainer.Spline, 50);
-        }
-        return totalLength;
     }
 }
