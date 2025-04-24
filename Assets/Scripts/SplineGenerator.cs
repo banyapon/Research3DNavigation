@@ -45,7 +45,7 @@ public class SplineGenerator : MonoBehaviour
         if (splineChain.Count > 0 && targetObject != null)
         {
             currentSplineIndex = 0;
-            t = 0.5f; // ให้อยู่กลางเส้น Spline ตัวแรก
+            t = 0.0f; // ให้เส้น Spline ตัวแรก
             lateralOffset = 0f; // ให้อยู่ตรงกลางเลน (ไม่เบี่ยงซ้าย/ขวา)
             UpdateTransformPosition(); // อัปเดตตำแหน่งเริ่มต้น
             UpdateDebugText();         // อัปเดตข้อความ debug
