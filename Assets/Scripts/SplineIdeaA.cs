@@ -19,10 +19,40 @@ public class SplineIdeaA : MonoBehaviour
     private float t = 0.5f; // เริ่มกลางเส้น
     private int currentRoadId = 0;
     private float lateralOffset = 0f;
+    public GameObject splineLine;
 
     void Start()
     {
-        if (roadList.Count > 0 && targetObject != null)
+        // ตรวจสอบว่ามี roadList หรือยัง
+        if (roadList.Count == 0)
+        {
+            GameObject go = new GameObject("AutoCreatedSpline");
+            var container = go.AddComponent<mYSplineContainer>(); //ใช้ AddComponent แทน new
+            roadList.Add(container);
+        }
+
+        // ค้นหา spline1 แล้วผูกเข้า splineContainer
+        splineLine = GameObject.Find("spline1");
+        if (splineLine != null)
+        {
+            var splineComp = splineLine.GetComponent<SplineContainer>(); // ไม่ใช่ mYSplineContainer
+            if (splineComp != null)
+            {
+                roadList[0].splineContainer = splineComp;
+                Debug.Log("[Init] ผูก spline1 เข้ากับ roadList[0] เรียบร้อย");
+            }
+            else
+            {
+                Debug.LogWarning("[Init] 'spline1' ไม่มี SplineContainer");
+            }
+        }
+        else
+        {
+            Debug.LogWarning("[Init] ไม่พบ GameObject ชื่อ 'spline1'");
+        }
+
+        // ตั้งค่าตำแหน่งเริ่มต้น
+        if (targetObject != null)
         {
             t = 0.5f;
             currentRoadId = 0;
@@ -32,6 +62,7 @@ public class SplineIdeaA : MonoBehaviour
             UpdateDebugText();
         }
     }
+
 
     void Update()
     {
@@ -50,17 +81,12 @@ public class SplineIdeaA : MonoBehaviour
     {
         if (roadList.Count == 0) return;
 
-        Spline spline = roadList[currentRoadId].Spline;
-        float newT;
-        SplineUtility.GetPointAtLinearDistance(spline, t, delta, out newT);
-        t = newT;
-
-        // เปลี่ยน spline หาก t เกิน
-        if (t >= 1f)
+        t += delta;
+        if(t >= 1f)
         {
             TryFollowChildEnd(currentRoadId);
         }
-        else if (t <= 0f)
+        else if(t <= 0.0f)
         {
             TryFollowChildStart(currentRoadId);
         }
@@ -110,7 +136,14 @@ public class SplineIdeaA : MonoBehaviour
     {
         if (roadList.Count == 0 || targetObject == null) return;
 
-        var spline = roadList[currentRoadId].Spline;
+        var current = roadList[currentRoadId];
+        if (current.splineContainer == null)
+        {
+            Debug.LogWarning($"SplineContainer ของ roadList[{currentRoadId}] ยังไม่ถูกกำหนด");
+            return;
+        }
+
+        var spline = current.splineContainer.Spline;
         Vector3 pos = spline.EvaluatePosition(t);
         Vector3 tangent = spline.EvaluateTangent(t);
         Vector3 right = Vector3.Cross(Vector3.up, tangent).normalized;
@@ -120,6 +153,7 @@ public class SplineIdeaA : MonoBehaviour
         if (tangent != Vector3.zero)
             targetObject.transform.rotation = Quaternion.LookRotation(tangent);
     }
+
 
     void UpdateDebugText()
     {
